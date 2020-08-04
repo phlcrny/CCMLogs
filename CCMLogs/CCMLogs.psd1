@@ -5,7 +5,7 @@
     Author            = "Phil Carney"
     CompanyName       = "N/A"
     Copyright         = "(c) Phil Carney. All rights reserved."
-    Description       = "A simple Powershell utility for viewing SCCM logs"
+    Description       = "A simple utility for viewing Configuration Manager logs in Powershell"
     FunctionsToExport = @("Get-CCMLog")
     CmdletsToExport   = @()
     VariablesToExport = @()
