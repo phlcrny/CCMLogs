@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Add a ``-Filter`` parameter to filter based on log message contents.
+- Add a ``-Pattern`` parameter to filter based on log message contents.
 - Add a ``-Count`` parameter to limit the amount of returned log events.
+
+## [0.2.0] - 2020-08-12
+
+### Added
+
 - Add ``-Before`` and ``-After`` parameters to limit the time range of log events.
 
 ## [0.1.0] - 2020-08-04

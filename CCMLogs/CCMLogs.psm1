@@ -11,18 +11,30 @@ function Get-CCMLog
         The directory the logs are stored in. UNC path's are assumed for use against remote machine but conversion from local drives is automatically attempted.
     .PARAMETER ComputerName
         The computer(s) whose logs will queried.
+    .PARAMETER After
+        Gets entries that occurred after a specified date and time.
+    .PARAMETER Before
+        Gets entries that occurred before a specified date and time.
     .EXAMPLE
         Get-CCMLog -LogName "AppDiscovery"
 
         Retrieves the AppDiscovery log of the local machine
     .EXAMPLE
+        Get-CCMLog -LogName "AppDiscovery" -After (Get-Date).AddDays(-1)
+
+        Retrieves the AppDiscovery log of the local machine for the last 24 hours
+    .EXAMPLE
+        Get-CCMLog -LogName AppEnforce -After "09:35:25 02 June 2020" -Before "11:35:28 02 June 2020"
+
+        Retrieves the AppDiscovery log of the local machine for a specified 2 hour period
+    .EXAMPLE
         Get-CCMLog -LogName "AppIntentEval", "AppDiscovery", "AppEnforce" | Out-GridView
 
-        Retrieves the 'AppIntentEval', 'AppDiscovery' and 'AppEnforce' log entries and outputs to Out-GridView for interactive search and manipulation.
+        Retrieves the 'AppIntentEval', 'AppDiscovery' and 'AppEnforce' log entries and outputs to Out-GridView for interactive search and manipulation
     .EXAMPLE
         Get-CCMLog -LogName PolicyAgent, AppDiscovery, AppIntentEval, CAS, ContentTransferManager, DataTransferService, AppEnforce | Out-GridView
 
-        Retrieves logs allowing for the tracing of a deployment from machine policy to app enforcement and outputs to Out-GridView again.
+        Retrieves logs allowing for the tracing of a deployment from machine policy to app enforcement and outputs to Out-GridView again
     .INPUTS
         String
     .OUTPUTS
@@ -54,7 +66,13 @@ function Get-CCMLog
 
         [Parameter(Position = 2, ValueFromPipeline = $True, ValueFromPipelineByPropertyName = $True, HelpMessage = "The computer whose logs will be parsed")]
         [alias("PSComputerName", "__SERVER", "CN", "IPAddress")]
-        [string[]] $ComputerName = "localhost"
+        [string[]] $ComputerName = "localhost",
+
+        [Parameter(HelpMessage = "Gets entries that occurred after a specified date and time.")]
+        [datetime] $After,
+
+        [Parameter(HelpMessage = "Gets entries that occurred before a specified date and time.")]
+        [datetime] $Before
     )
 
     BEGIN
@@ -207,7 +225,6 @@ function Get-CCMLog
                                         $PSCmdlet.ThrowTerminatingError($_)
                                     }
 
-
                                     try
                                     {
                                         Write-Debug -Message "Processing TimeStub block."
@@ -239,6 +256,24 @@ function Get-CCMLog
                                         Write-Debug -Message "Generating timestamp."
                                         [datetime] $TimeStamp = "$DateStub $TimeStub"
                                         # At the end we add the two stubs together, and cast them as a [datetime] object
+                                        # When the [datetime] object is constructed we can begin to filter based on a time range.
+                                        if ($After)
+                                        {
+                                            if ($Timestamp -lt $After)
+                                            {
+                                                Write-Debug -Message "Timestamp is before '$After' cut-off."
+                                                continue
+                                            }
+                                        }
+
+                                        if ($Before)
+                                        {
+                                            if ($Timestamp -gt $Before)
+                                            {
+                                                Write-Debug -Message "Timestamp is before '$After' cut-off."
+                                                continue
+                                            }
+                                        }
                                     }
                                     catch
                                     {
