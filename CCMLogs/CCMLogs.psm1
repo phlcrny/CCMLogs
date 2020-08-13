@@ -15,10 +15,16 @@ function Get-CCMLog
         Gets entries that occurred after a specified date and time.
     .PARAMETER Before
         Gets entries that occurred before a specified date and time.
+    .PARAMETER Count
+        The number of entries to be retrieved - this is calculated per computer/group of logs rather than per log.
     .EXAMPLE
         Get-CCMLog -LogName "AppDiscovery"
 
         Retrieves the AppDiscovery log of the local machine
+    .EXAMPLE
+        Get-CCMLog -LogName "AppDiscovery" -Count 10
+
+        Retrieves a maximum of 10 entries from the AppDiscovery log of the local machine
     .EXAMPLE
         Get-CCMLog -LogName "AppDiscovery" -After (Get-Date).AddDays(-1)
 
@@ -72,7 +78,10 @@ function Get-CCMLog
         [datetime] $After,
 
         [Parameter(HelpMessage = "Gets entries that occurred before a specified date and time.")]
-        [datetime] $Before
+        [datetime] $Before,
+
+        [Parameter(HelpMessage = "The number of entries to be retrieved.")]
+        [int] $Count
     )
 
     BEGIN
@@ -93,6 +102,11 @@ function Get-CCMLog
                 $Computer = [Environment]::MachineName
             }
             Write-Verbose -Message "Processing '$Computer'"
+
+            if ($Count)
+            {
+                $EntryCounter = 1
+            }
 
             try
             {
@@ -278,6 +292,20 @@ function Get-CCMLog
                                     catch
                                     {
                                         $PSCmdlet.ThrowTerminatingError($_)
+                                    }
+
+                                    if (($Null -ne $Count) -and ($Null -ne $EntryCounter))
+                                    {
+                                        if ($EntryCounter -gt $Count)
+                                        {
+                                            Write-Debug -Message "Count is: $EntryCounter/$Count"
+                                            Break
+                                        }
+                                        else
+                                        {
+                                            Write-Debug -Message "Incrementing counter ($EntryCounter)"
+                                            $EntryCounter++
+                                        }
                                     }
 
                                     [PSCustomObject]@{

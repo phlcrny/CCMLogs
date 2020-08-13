@@ -18,6 +18,9 @@ Install-Module -Name "CCMLogs"
 Get-CCMLog -LogName "AppDiscovery"
 # Retrieves the AppDiscovery log of the local machine
 
+Get-CCMLog -LogName "AppEnforce" -Count 10
+# Retrieves 10 entries from the AppEnforce log of the local machine
+
 Get-CCMLog -LogName "AppIntentEval", "AppDiscovery", "AppEnforce" | Out-GridView
 # Retrieves the 'AppIntentEval', 'AppDiscovery' and 'AppEnforce' log entries and outputs to Out-GridView for interactive search, sorting etc.
 
