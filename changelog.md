@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add a ``-Filter`` parameter to filter based on log message contents.
 - Add a ``-Pattern`` parameter to filter based on log message contents.
+- Add handling to automatically switch to/from a _FileSystem_ PSProvider when invoked, if not already in one.
+- Add ``-AllLogs`` parameter to automatically detect all *.log files in the specified path rather than specifying logs with ``-LogName``.
 
 ## [0.3.0] - 2020-08-13
 
