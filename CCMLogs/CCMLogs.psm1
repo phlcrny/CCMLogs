@@ -90,6 +90,26 @@ function Get-CCMLog
         {
             $DebugPreference = "Continue"
         }
+
+        # A colleague encountered weird, broken behaviour if running this from a CMSite provider
+        # To be safe, we're going to explicitly move to a FileSystem if not already in one
+        if (($ExecutionContext.SessionState.Path.CurrentLocation).Provider.Name -ne "FileSystem")
+        {
+            Push-Location # So we can move back afterwards - hopefully seamlessly
+
+            try
+            {
+                # Move to the root of the first file system available, usually C:\ but why assume.
+                Set-Location -Path (Get-PSDrive -PSProvider "FileSystem" | Select-Object -ExpandProperty "Root" -First 1)
+                $PoppedLocation = $True
+                Remove-Variable -Name "PoppedLocation"
+            }
+            catch
+            {
+                # Revert location if this fails for some inexplicable reason (no file systems?)
+                Pop-Location
+            }
+        }
     }
 
     PROCESS
@@ -326,5 +346,9 @@ function Get-CCMLog
 
     END
     {
+        if ($PoppedLocation)
+        {
+            Pop-Location # Revert to original location
+        }
     }
 }
