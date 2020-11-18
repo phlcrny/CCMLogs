@@ -1,3 +1,118 @@
+function Read-LogEntry
+{
+    [CmdletBinding(ConfirmImpact = 'Low', SupportsShouldProcess = $False)]
+    param
+    (
+        [Parameter(Mandatory = $True, HelpMessage = 'The log entry to be parsed')]
+        [string] $InputObject,
+
+        [Parameter(Mandatory = $False, HelpMessage = 'Drops entries that occurred after the specified date and time.')]
+        [datetime] $After,
+
+        [Parameter(Mandatory = $False, HelpMessage = 'Drops entries that occurred before the specified date and time.')]
+        [datetime] $Before
+    )
+
+    if ($PSBoundParameters.ContainsKey('Debug'))
+    {
+        $DebugPreference = 'Continue'
+    }
+
+    Write-Debug -Message "Processing log entry: '$InputObject'"
+    try
+    {
+        Write-Debug -Message 'Processing message property.'
+        [string] $Message = ($InputObject | Select-String -Pattern '\[LOG\[((.| )+)\]LOG\]').Matches.Value
+        # Identifies the message sections of each line using the [LOG[] tags and removes them for us.
+        if ($Log -like 'AppIntentEval')
+        {
+            Write-Debug -Message 'Parsing AppIntentEval message.'
+            $Message = $Message -replace ':- |, ', "`n"
+            # Lazy reformatting to key:value statements instead of in a line.
+        }
+        $Message = ($Message -replace '\[LOG\[|\]LOG\]').Trim()
+    }
+    catch
+    {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+
+    if (-not ($Message))
+    {
+        Write-Debug -Message 'Unable to read blank message - skipping to next.'
+        Continue
+    }
+
+    try
+    {
+        Write-Debug -Message 'Processing metadata block.'
+        [string] $Metadata = ((($InputObject | Select-String -Pattern '<time((.| )+)>').Matches.Value -replace '<|>') -split ' ')
+        # Identifies and isolates the metadata section
+        # Includes the time and date which we want, but also other entries which we'll need to get rid of.
+    }
+    catch
+    {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+
+    try
+    {
+        Write-Debug -Message 'Processing TimeStub block.'
+        [string] $TimeStub = ((($Metadata -split ' ')[0] -replace 'time|=|"') -split '\.')[0]
+        # To find the time, we remove 'time', '=', and '"'
+        # Split the remainder in two based on '.' and keep the first part.
+        # This is a bit awkward but the casting is tricky without the split.
+    }
+    catch
+    {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+
+    try
+    {
+        Write-Debug -Message 'Processing DateStub block.'
+        [string] $DateStub = ((($Metadata -split ' ')[1] -replace 'date|=|"'))
+        # Finding the date is similar but simpler.
+        # We only need to remove 'date', '=', and '"'.
+    }
+    catch
+    {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+
+
+    try
+    {
+        Write-Debug -Message 'Generating timestamp.'
+        [datetime] $TimeStamp = "$DateStub $TimeStub"
+        # At the end we add the two stubs together, and cast them as a [datetime] object
+        # When the [datetime] object is constructed we can begin to filter based on a time range.
+        if (($After) -or ($Before))
+        {
+            if ($Timestamp -lt $After)
+            {
+                Write-Debug -Message "Timestamp is before '$After' cut-off."
+                Continue
+            }
+
+            if ($Timestamp -gt $Before)
+            {
+                Write-Debug -Message "Timestamp is after '$Before' cut-off."
+                Continue
+            }
+        }
+
+        [PSCustomObject]@{
+            Timestamp = $TimeStamp
+            Message   = $Message
+        }
+    }
+    catch
+    {
+        $PSCmdlet.ThrowTerminatingError($_)
+    }
+}
+
 function Get-CCMLog
 {
     <#
@@ -46,16 +161,16 @@ function Get-CCMLog
     .OUTPUTS
         PSCustomObject
     #>
-    [CmdletBinding(ConfirmImpact = "Low", SupportsShouldProcess = $True)]
+    [CmdletBinding(ConfirmImpact = "Low", SupportsShouldProcess = $True, DefaultParameterSetName = "NamedLogs")]
     [OutputType("PSCustomObject")]
     param
     (
-        [Parameter(Position = 0, HelpMessage = "The log(s) to be retrieved")]
+        [Parameter(Position = 0, ParameterSetName = "NamedLogs" , HelpMessage = "The log(s) to be retrieved")]
         [alias("Name")]
         [ValidateSet("AlternateHandler", "AppDiscovery", "AppEnforce", "AppIntentEval", "AssetAdvisor", "CAS", "Ccm32BitLauncher", "CcmCloud",
             "CcmEval", "CcmEvalTask", "CcmExec", "CcmMessaging", "CcmNotificationAgent", "CcmRepair", "CcmRestart", "CCMSDKProvider",
-            "CcmSqlCE", "CCMVDIProvider", "CertEnrollAgent", "CertificateMaintenance", "CIAgent", "CIDownloader", "CIStateStore",
-            "CIStore", "CITaskMgr", "ClientIDManagerStartup", "ClientLocation", "ClientServicing", "CMBITSManager", "CmRcService",
+            "CCMSetup", "CcmSqlCE", "CCMVDIProvider", "CertEnrollAgent", "CertificateMaintenance", "CIAgent", "CIDownloader", "CIStateStore",
+            "CIStore", "CITaskMgr", "ClientIDManagerStartup", "ClientLocation", "Client.Msi", "ClientServicing", "CMBITSManager", "CmRcService",
             "CoManagementHandler", "ComplRelayAgent", "ContentTransferManager", "DataTransferService", "DCMAgent", "DCMReporting",
             "DcmWmiProvider", "DdrProvider", "DeltaDownload", "EndpointProtectionAgent", "execmgr", "ExpressionSolver",
             "ExternalEventAgent", "FileBITS", "FSPStateMessage", "InternetProxy", "InventoryAgent", "InventoryProvider",
@@ -66,6 +181,9 @@ function Get-CCMLog
             "UpdatesDeployment", "UpdatesHandler", "UpdatesStore", "UpdateTrustedSites", "UserAffinity", "UserAffinityProvider",
             "VirtualApp", "wedmtrace", "WindowsAnalytics", "WUAHandler")]
         [string[]] $LogName = "AppEnforce",
+
+        [Parameter(Position = 0, ParameterSetName = "AllLogs", HelpMessage = "Indicates that all *.log files in the Path directory will be parsed")]
+        [switch] $AllLogs = $False,
 
         [Parameter(Position = 1, HelpMessage = "The path to the directory containing the logs")]
         [string] $Path = "C:\Windows\CCM\Logs",
@@ -171,171 +289,111 @@ function Get-CCMLog
             if (($Computer -eq [Environment]::MachineName) -or
                 (Test-Connection -ComputerName $Computer -Quiet -Count 2))
             {
-                forEach ($Log in $LogName)
+                $LogSearchSplat = $Null
+                $LogSearchSplat = @{
+                    Path = $LogRoot
+                    File = $True
+                }
+
+                $LogFiles = $Null
+                $LogFiles = if ($AllLogs)
                 {
-                    if ($PSCmdlet.ShouldProcess($LogRoot, "Retrieve '$Log' log entries"))
+                    try
+                    {
+                        $LogSearchSplat.Add("Filter", "*.log")
+                        Get-ChildItem @LogSearchSplat  | Select-Object -ExpandProperty "FullName"
+                    }
+                    catch
+                    {
+                        $PSCmdlet.ThrowTerminatingError($_)
+                    }
+                }
+                else
+                {
+                    forEach ($Log in ($LogName | Sort-Object -Unique))
                     {
                         try
                         {
                             Write-Verbose -Message "Locating '$Log' log(s)."
-                            $LogSearchSplat = $Null
-                            $LogSearchSplat = @{
-                                Path   = $LogRoot
-                                Filter = "$Log*.log"
-                                File   = $True
-                            }
+                            $LogSearchSplat.Remove("Filter")
+                            $LogSearchSplat.Add("Filter", "$Log*.log")
+                            Get-ChildItem @LogSearchSplat  | Select-Object -ExpandProperty "FullName"
 
-                            $LogPaths = $Null
-                            $LogPaths = @(Get-ChildItem @LogSearchSplat  | Select-Object -ExpandProperty "FullName")
-                            Write-Verbose -Message "'$($LogPaths.Count)' '$Log' logs found."
                         }
                         catch
                         {
                             Write-Warning -Message "Problems were encountered '$Log' logs from '$LogRoot'"
                             $PSCmdlet.ThrowTerminatingError($_)
                         }
+                    }
+                }
 
-                        forEach ($LogPath in $LogPaths)
+                Write-Verbose -Message "'$($LogFiles.Count)' logs found."
+                forEach ($LogFile in $LogFiles)
+                {
+                    if (Test-Path -Path $LogFile -ErrorAction "Stop")
+                    {
+                        $CurrentLog = ((Split-Path $LogFile -Leaf) -replace '^_') -split '-' | Select-Object -First 1
+
+                        try
                         {
-                            if (Test-Path -Path $LogPath -ErrorAction "Stop")
+                            $Parameters = @{
+                                Path        = $LogFile
+                                Tail        = 2000     # I'm reluctant to read the entirety of the files by default and this seems likely to read most logs.
+                                ErrorAction = "Stop"
+                            }
+
+                            Write-Verbose -Message "Reading log ($LogFile)."
+                            $LogContents = Get-Content @Parameters
+                        }
+                        catch [System.UnauthorizedAccessException]
+                        {
+                            Write-Warning -Message "Unable due to retrieve details to an 'Unauthorized Access' exception. Ensure you have the required permissions."
+                            $PSCmdlet.ThrowTerminatingError($_)
+                        }
+                        catch
+                        {
+                            $PSCmdlet.ThrowTerminatingError($_)
+                        }
+
+                        forEach ($LogEntry in $LogContents)
+                        {
+
+                            $LogSplat = @{
+                                InputObject = $LogEntry
+                            }
+
+                            if ($After)
                             {
-                                try
+                                $LogSplat.Add("After", $After)
+                            }
+                            if ($Before)
+                            {
+                                $LogSplat.Before("Before", $Before)
+                            }
+
+                            $ParsedEntry = Read-LogEntry @LogSplat
+
+                            if (($Null -ne $Count) -and ($Null -ne $EntryCounter))
+                            {
+                                if ($EntryCounter -gt $Count)
                                 {
-                                    $Parameters = @{
-                                        Path        = $LogPath
-                                        Tail        = 2000     # I'm reluctant to read the entirety of the files by default and this seems likely to read most logs.
-                                        ErrorAction = "Stop"
-                                    }
-
-                                    Write-Verbose -Message "Reading log ($LogPath)."
-                                    $LogContents = Get-Content @Parameters
+                                    Write-Debug -Message "Count is: $EntryCounter/$Count"
+                                    Break
                                 }
-                                catch [System.UnauthorizedAccessException]
+                                else
                                 {
-                                    Write-Warning -Message "Unable due to retrieve details to an 'Unauthorized Access' exception. Ensure you have the required permissions."
-                                    $PSCmdlet.ThrowTerminatingError($_)
+                                    Write-Debug -Message "Incrementing counter ($EntryCounter)"
+                                    $EntryCounter++
                                 }
-                                catch
-                                {
-                                    $PSCmdlet.ThrowTerminatingError($_)
-                                }
+                            }
 
-                                forEach ($LogEntry in $LogContents)
-                                {
-                                    Write-Debug -Message "Processing log entry: '$LogEntry'"
-                                    try
-                                    {
-                                        Write-Debug -Message "Processing message property."
-                                        [string] $Message = ($LogEntry | Select-String -Pattern "\[LOG\[((.| )+)\]LOG\]").Matches.Value
-                                        # Identifies the message sections of each line using the [LOG[] tags and removes them for us.
-                                        if ($Log -like "AppIntentEval")
-                                        {
-                                            Write-Debug -Message "Parsing AppIntentEval message."
-                                            $Message = $Message -replace ":- |, ", "`n"
-                                            # Lazy reformatting to key:value statements instead of in a line.
-                                        }
-                                        $Message = ($Message -replace "\[LOG\[|\]LOG\]").Trim()
-                                    }
-                                    catch
-                                    {
-                                        $PSCmdlet.ThrowTerminatingError($_)
-                                    }
-
-                                    if (-not ($Message))
-                                    {
-                                        Write-Verbose -Message "Unable to read blank message - skipping to next."
-                                        Continue
-                                    }
-
-                                    try
-                                    {
-                                        Write-Debug -Message "Processing metadata block."
-                                        [string] $Metadata = ((($LogEntry | Select-String -Pattern "<time((.| )+)>").Matches.Value -replace "<|>") -split " ")
-                                        # Identifies and isolates the metadata section
-                                        # Includes the time and date which we want, but also other entries which we'll need to get rid of.
-                                    }
-                                    catch
-                                    {
-                                        $PSCmdlet.ThrowTerminatingError($_)
-                                    }
-
-                                    try
-                                    {
-                                        Write-Debug -Message "Processing TimeStub block."
-                                        [string] $TimeStub = ((($Metadata -split " ")[0] -replace 'time|=|"') -split "\.")[0]
-                                        # To find the time, we remove 'time', '=', and '"'
-                                        # Split the remainder in two based on '.' and keep the first part.
-                                        # This is a bit awkward but the casting is tricky without the split.
-                                    }
-                                    catch
-                                    {
-                                        $PSCmdlet.ThrowTerminatingError($_)
-                                    }
-
-                                    try
-                                    {
-                                        Write-Debug -Message "Processing DateStub block."
-                                        [string] $DateStub = ((($Metadata -split " ")[1] -replace 'date|=|"'))
-                                        # Finding the date is similar but simpler.
-                                        # We only need to remove 'date', '=', and '"'.
-                                    }
-                                    catch
-                                    {
-                                        $PSCmdlet.ThrowTerminatingError($_)
-                                    }
-
-
-                                    try
-                                    {
-                                        Write-Debug -Message "Generating timestamp."
-                                        [datetime] $TimeStamp = "$DateStub $TimeStub"
-                                        # At the end we add the two stubs together, and cast them as a [datetime] object
-                                        # When the [datetime] object is constructed we can begin to filter based on a time range.
-                                        if ($After)
-                                        {
-                                            if ($Timestamp -lt $After)
-                                            {
-                                                Write-Debug -Message "Timestamp is before '$After' cut-off."
-                                                continue
-                                            }
-                                        }
-
-                                        if ($Before)
-                                        {
-                                            if ($Timestamp -gt $Before)
-                                            {
-                                                Write-Debug -Message "Timestamp is before '$After' cut-off."
-                                                continue
-                                            }
-                                        }
-                                    }
-                                    catch
-                                    {
-                                        $PSCmdlet.ThrowTerminatingError($_)
-                                    }
-
-                                    if (($Null -ne $Count) -and ($Null -ne $EntryCounter))
-                                    {
-                                        if ($EntryCounter -gt $Count)
-                                        {
-                                            Write-Debug -Message "Count is: $EntryCounter/$Count"
-                                            Break
-                                        }
-                                        else
-                                        {
-                                            Write-Debug -Message "Incrementing counter ($EntryCounter)"
-                                            $EntryCounter++
-                                        }
-                                    }
-
-                                    [PSCustomObject]@{
-                                        ComputerName = $Computer
-                                        Source       = $Log
-                                        Timestamp    = $TimeStamp
-                                        Message      = $Message
-                                        Path         = $LogPath
-                                    }
-                                }
+                            [PSCustomObject]@{
+                                ComputerName = $Computer
+                                Source       = $CurrentLog
+                                Timestamp    = $ParsedEntry.TimeStamp
+                                Message      = $ParsedEntry.Message
+                                Path         = $LogFile
                             }
                         }
                     }
