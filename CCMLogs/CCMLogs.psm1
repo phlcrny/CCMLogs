@@ -87,14 +87,17 @@ function Read-LogEntry
         [datetime] $TimeStamp = "$DateStub $TimeStub"
         # At the end we add the two stubs together, and cast them as a [datetime] object
         # When the [datetime] object is constructed we can begin to filter based on a time range.
-        if (($After) -or ($Before))
+        if ($After)
         {
             if ($Timestamp -lt $After)
             {
                 Write-Debug -Message "Timestamp is before '$After' cut-off."
                 Continue
             }
-
+        }
+        
+        if($Before)
+        {
             if ($Timestamp -gt $Before)
             {
                 Write-Debug -Message "Timestamp is after '$Before' cut-off."
