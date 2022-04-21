@@ -369,7 +369,7 @@ function Get-CCMLog
                             }
                             if ($Before)
                             {
-                                $LogSplat.Before("Before", $Before)
+                                $LogSplat.Add("Before", $Before)
                             }
 
                             $ParsedEntry = Read-LogEntry @LogSplat
