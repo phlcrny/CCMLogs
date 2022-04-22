@@ -95,8 +95,7 @@ function Read-LogEntry
                 Continue
             }
         }
-        
-        if($Before)
+        if ($Before)
         {
             if ($Timestamp -gt $Before)
             {
