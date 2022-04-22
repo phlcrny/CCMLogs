@@ -1,5 +1,5 @@
 @{
-    ModuleVersion     = "0.4.0"
+    ModuleVersion     = "0.4.1"
     RootModule        = "CCMLogs.psm1"
     GUID              = "d2ec31cb-f08f-46d3-9e79-6ba5b73adfdd"
     Author            = "Phil Carney"
